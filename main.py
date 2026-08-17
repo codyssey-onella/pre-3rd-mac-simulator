@@ -9,9 +9,13 @@ from pathlib import Path
 
 from logger import get_logger
 from npu_core import (
+    FilterType,
     Label,
+    MacVariantBenchmark,
     Matrix,
+    OPTIMIZATION_REPEAT_COUNT,
     PERFORMANCE_REPEAT_COUNT,
+    benchmark_mac_variants,
     create_cross_pattern,
     create_x_pattern,
     extract_size_from_pattern_key,
@@ -173,6 +177,66 @@ def print_performance_table(
         avg_ms: float = (cross_time + x_time) / 2.0
         print(format_performance_row(size, avg_ms))
 
+    # 보너스 - 단계적 개선 별 성능 비교
+    print_optimization_table(sizes, filters_by_size)
+
+
+def resolve_filters_for_size(
+    size: int, filters_by_size: dict[int, dict[str, Matrix]]
+) -> tuple[Matrix, Matrix] | None:
+    if size == MATRIX_SIZE_3:
+        return create_cross_pattern(size), create_x_pattern(size)
+    size_filters: dict[str, Matrix] | None = filters_by_size.get(size)
+    if size_filters is None:
+        return None
+    return size_filters["cross"], size_filters["x"]
+
+
+def print_optimization_table(
+    sizes: list[int], filters_by_size: dict[int, dict[str, Matrix]]
+) -> None:
+    """보너스 표. 열 순서 = 개선 단계 1→4.
+
+    1. two_d    = 기존 2D mac()
+    2. one_d    = flatten 후 전칸 1D mac_1d()
+    3. indexmap = FilterType으로 인덱스만 뽑고, 1D 두 배열을 idx로 조회 mac_indexmap()
+    4. sparse   = (idx, filterValue) 튜플 mac_sparse()
+    """
+    print("\n#----------------------------------------")
+    print(f"# [보너스] MAC 4방식 비교 (평균/{OPTIMIZATION_REPEAT_COUNT}회, 전처리 제외)")
+    print("#----------------------------------------")
+    print("1. 기존 2D     2. 1D flatten     3. enum IndexMap     4. (idx, value) 튜플")
+    print("크기     1.2D(ms)   2.1D(ms)   3.Idx(ms)   4.Tuple(ms)")
+    print("-------------------------------------------------------")
+    for size in sizes:
+        resolved: tuple[Matrix, Matrix] | None = resolve_filters_for_size(
+            size, filters_by_size
+        )
+        if resolved is None:
+            continue
+        cross_filter, x_filter = resolved
+        pattern: Matrix = create_cross_pattern(size)
+        cross_bench: MacVariantBenchmark = benchmark_mac_variants(
+            pattern, cross_filter, FilterType.CROSS
+        )
+        x_bench: MacVariantBenchmark = benchmark_mac_variants(
+            pattern, x_filter, FilterType.X
+        )
+        # Cross/X 필터 시간을 평균해서 한 줄로 출력
+        two_d: float = (cross_bench.two_d_ms + x_bench.two_d_ms) / 2.0  # 1 기존 2D
+        one_d: float = (cross_bench.one_d_ms + x_bench.one_d_ms) / 2.0  # 2 1D 전칸
+        indexmap: float = (
+            cross_bench.indexmap_ms + x_bench.indexmap_ms
+        ) / 2.0  # 3 인덱스+1D 조회
+        sparse: float = (cross_bench.sparse_ms + x_bench.sparse_ms) / 2.0  # 4 튜플
+        print(
+            f"{size}×{size:<4} "
+            f"{two_d:>9.4f}  "  # 1
+            f"{one_d:>9.4f}  "  # 2
+            f"{indexmap:>9.4f}  "  # 3
+            f"{sparse:>10.4f}"  # 4
+        )
+
 
 def run_user_input_mode() -> None:
     print("\n#----------------------------------------")
@@ -202,6 +266,7 @@ def run_user_input_mode() -> None:
     print(f"B 점수: {score_b}")
     print(f"연산 시간(평균/{PERFORMANCE_REPEAT_COUNT}회): {avg_time_ms:.3f} ms")
     print(f"판정: {judgment}")
+    print_optimization_table([MATRIX_SIZE_3], {})
 
 
 def load_data_json() -> dict:
@@ -367,9 +432,12 @@ def run_data_json_mode() -> None:
         )
         results.append(result)
         print(f"--- {case_id} ---")
+        # 점수를 구하지 못한 경우
         if result.fail_reason and result.cross_score is None:
             print(f"FAIL ({result.fail_reason})")
             continue
+
+        # 점수가 있으면 print하고 결과 출력
         print(f"Cross 점수: {result.cross_score}")
         print(f"X 점수: {result.x_score}")
         status: str = "PASS" if result.passed else "FAIL"
