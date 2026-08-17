@@ -179,7 +179,9 @@ def run_user_input_mode() -> None:
     print("# [1] 필터 입력")
     print("#----------------------------------------")
     filter_a: Matrix = read_matrix(MATRIX_SIZE_3, "필터 A")
+    print("필터 A 저장 완료")
     filter_b: Matrix = read_matrix(MATRIX_SIZE_3, "필터 B")
+    print("필터 B 저장 완료")
 
     print("\n#----------------------------------------")
     print("# [2] 패턴 입력")
