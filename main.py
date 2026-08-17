@@ -32,7 +32,7 @@ from npu_core import (
 logger = get_logger()
 
 MATRIX_SIZE_3: int = 3
-DATA_JSON_PATH: Path = Path(__file__).resolve().parent.parent / "data.json"
+DATA_JSON_PATH: Path = Path(__file__).resolve().parent / "data.json"
 ERROR_RETRY_MESSAGE: str = "에러가 발생했습니다. 모드를 다시 선택해주세요."
 
 

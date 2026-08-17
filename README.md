@@ -13,7 +13,7 @@ python main.py
 - **1** — 사용자 입력 (3×3): 필터 A, B, 패턴을 콘솔에 입력
 - **2** — `data.json` 분석: JSON 데이터 일괄 판정 + 성능 분석 + 결과 요약
 
-`data.json`은 프로젝트 루트(`../data.json`)에 있음.
+`data.json`은 `main.py`와 같은 폴더에 있음.
 
 ### 모드 1 예시 입력 (instruction 예시)
 
@@ -49,7 +49,7 @@ python main.py
 | `main.py` | 진입점, 모드 선택, I/O, data.json 분석 흐름 |
 | `npu_core.py` | MAC 연산, 판정, 라벨 정규화, 성능 측정, 패턴 생성 |
 | `logger.py` | 예외 로깅 (표준 라이브러리 `logging`) |
-| `../data.json` | 필터(5/13/25) + 테스트 패턴 |
+| `data.json` | 필터(5/13/25) + 테스트 패턴 |
 
 ### 라벨 정규화
 
