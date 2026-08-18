@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IndexMap — 1D 채우기</title>
+  <style>
+    :root {
+      --bg: #12141a;
+      --panel: #1c2029;
+      --line: #2c3340;
+      --text: #e8edf5;
+      --muted: #8b95a8;
+      --cross: #5eead4;
+      --x: #fbbf24;
+      --skip: #2a3140;
+      --now: #f472b6;
+      --done: #64748b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      padding: 20px 24px 8px;
+      border-bottom: 1px solid var(--line);
+    }
+    h1 { margin: 0 0 6px; font-size: 18px; font-weight: 650; }
+    header p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      background: #0d0f14;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      padding: 14px 24px;
+    }
+    button, select {
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    button:hover { border-color: #4b5568; }
+    button.primary { background: #2563eb; border-color: #2563eb; }
+    .hint { color: var(--muted); font-size: 12px; }
+    .formula {
+      margin: 0 24px 16px;
+      padding: 14px 16px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 15px;
+    }
+    .formula .why { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; font-family: ui-sans-serif, system-ui, sans-serif; }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) minmax(280px, 1.2fr);
+      gap: 20px;
+      padding: 0 24px 28px;
+    }
+    @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+    h2 { margin: 0 0 10px; font-size: 13px; color: var(--muted); font-weight: 600; }
+    .grid2d {
+      display: grid;
+      gap: 2px;
+      width: fit-content;
+      max-width: 100%;
+    }
+    .cell {
+      aspect-ratio: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--skip);
+      border-radius: 3px;
+      font-size: 10px;
+      color: #64748b;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .cell.hit { color: #0b1220; font-weight: 700; }
+    .cell.hit.cross { background: var(--cross); }
+    .cell.hit.x { background: var(--x); }
+    .cell.now {
+      outline: 2px solid var(--now);
+      outline-offset: 1px;
+      z-index: 1;
+    }
+    .strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px;
+    }
+    .slot {
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      background: var(--skip);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 9px;
+      color: #64748b;
+      line-height: 1.1;
+    }
+    .slot.hit.cross { background: var(--cross); color: #0b1220; }
+    .slot.hit.x { background: var(--x); color: #0b1220; }
+    .slot.now { outline: 2px solid var(--now); }
+    .slot .ord { font-weight: 800; font-size: 11px; }
+    .list {
+      margin-top: 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      color: var(--muted);
+      word-break: break-all;
+    }
+    .legend { font-size: 12px; color: var(--muted); margin-top: 10px; }
+    .swatch {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 2px;
+      vertical-align: -1px;
+      margin-right: 4px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>IndexMap 채우기 — <code>idx = row * N + col</code></h1>
+    <p>
+      <code>create_shape_indexes()</code>랑 같은 순서. 2D에서 유효 칸만 찍고, 그 번호가 1D 배열 어디에 꽂히는지 보여줌.
+      MAC은 이 인덱스만 순회해서 0칸은 아예 안 봄.
+    </p>
+  </header>
+
+  <div class="controls">
+    <label>모양
+      <select id="shape">
+        <option value="cross">Cross (+)</option>
+        <option value="x">X</option>
+      </select>
+    </label>
+    <label>N
+      <select id="size">
+        <option value="3">3</option>
+        <option value="5" selected>5</option>
+        <option value="7">7</option>
+        <option value="13">13</option>
+      </select>
+    </label>
+    <button class="primary" id="play" type="button">재생</button>
+    <button id="step" type="button">한 칸</button>
+    <button id="reset" type="button">리셋</button>
+    <span class="hint" id="progress">0 / 0</span>
+  </div>
+
+  <div class="formula" id="formula">
+    아직 시작 전. 재생 또는 한 칸.
+    <span class="why">Cross: 가운데 열 전부 → 가운데 행(중심 제외). X: 각 행마다 주대각 + 반대각(중심은 한 번).</span>
+  </div>
+
+  <div class="layout">
+    <section>
+      <h2>2D 격자 (공간)</h2>
+      <div class="grid2d" id="grid2d"></div>
+      <p class="legend">
+        <span class="swatch" style="background:#5eead4"></span>Cross
+        <span class="swatch" style="background:#fbbf24; margin-left:10px"></span>X
+        <span class="swatch" style="background:#2a3140; margin-left:10px"></span>스킵(0)
+        <span class="swatch" style="outline:2px solid #f472b6; margin-left:10px"></span>지금 찍는 칸
+      </p>
+    </section>
+    <section>
+      <h2>1D 배열 (길이 N², 왼쪽이 인덱스 0)</h2>
+      <div class="strip" id="strip"></div>
+      <div class="list" id="list">indexes = []</div>
+    </section>
+  </div>
+
+  <script>
+    const shapeEl = document.getElementById("shape");
+    const sizeEl = document.getElementById("size");
+    const playEl = document.getElementById("play");
+    const stepEl = document.getElementById("step");
+    const resetEl = document.getElementById("reset");
+    const formulaEl = document.getElementById("formula");
+    const gridEl = document.getElementById("grid2d");
+    const stripEl = document.getElementById("strip");
+    const listEl = document.getElementById("list");
+    const progressEl = document.getElementById("progress");
+
+    let steps = [];
+    let cursor = -1;
+    let timer = null;
+
+    function createShapeIndexes(filterType, size) {
+      const out = [];
+      const mid = Math.floor(size / 2);
+      if (filterType === "cross") {
+        for (let row = 0; row < size; row++) {
+          out.push({
+            row, col: mid, idx: row * size + mid,
+            why: "가운데 열: 모든 row, col = mid",
+          });
+        }
+        for (let col = 0; col < size; col++) {
+          if (col === mid) continue;
+          out.push({
+            row: mid, col, idx: mid * size + col,
+            why: "가운데 행: col != mid 만 (중심 중복 제거)",
+          });
+        }
+      } else {
+        for (let row = 0; row < size; row++) {
+          out.push({
+            row, col: row, idx: row * size + row,
+            why: "주대각: (row, row)",
+          });
+          const mirror = size - 1 - row;
+          if (mirror !== row) {
+            out.push({
+              row, col: mirror, idx: row * size + mirror,
+              why: "반대각: (row, N-1-row). 중심이면 skip",
+            });
+          }
+        }
+      }
+      return out;
+    }
+
+    function rebuild() {
+      stop();
+      const n = Number(sizeEl.value);
+      const shape = shapeEl.value;
+      steps = createShapeIndexes(shape, n);
+      cursor = -1;
+
+      const cellPx = n <= 5 ? 44 : n <= 7 ? 32 : 18;
+      gridEl.style.gridTemplateColumns = `repeat(${n}, ${cellPx}px)`;
+      gridEl.innerHTML = "";
+      for (let i = 0; i < n * n; i++) {
+        const d = document.createElement("div");
+        d.className = "cell";
+        d.dataset.idx = String(i);
+        d.textContent = String(i);
+        gridEl.appendChild(d);
+      }
+
+      const slotPx = n <= 5 ? 32 : n <= 7 ? 26 : 20;
+      stripEl.innerHTML = "";
+      for (let i = 0; i < n * n; i++) {
+        const d = document.createElement("div");
+        d.className = "slot";
+        d.dataset.idx = String(i);
+        d.style.width = d.style.height = slotPx + "px";
+        d.innerHTML = `<span>${i}</span>`;
+        stripEl.appendChild(d);
+      }
+
+      paint();
+    }
+
+    function paint() {
+      const shape = shapeEl.value;
+      const filled = new Map();
+      for (let k = 0; k <= cursor; k++) {
+        filled.set(steps[k].idx, k + 1);
+      }
+      const nowIdx = cursor >= 0 ? steps[cursor].idx : -1;
+
+      gridEl.querySelectorAll(".cell").forEach((el) => {
+        const idx = Number(el.dataset.idx);
+        el.classList.remove("hit", "cross", "x", "now");
+        if (filled.has(idx)) {
+          el.classList.add("hit", shape);
+        }
+        if (idx === nowIdx) el.classList.add("now");
+      });
+
+      stripEl.querySelectorAll(".slot").forEach((el) => {
+        const idx = Number(el.dataset.idx);
+        el.classList.remove("hit", "cross", "x", "now");
+        const ord = filled.get(idx);
+        if (ord) {
+          el.classList.add("hit", shape);
+          el.innerHTML = `<span class="ord">${ord}</span><span>${idx}</span>`;
+        } else {
+          el.innerHTML = `<span>${idx}</span>`;
+        }
+        if (idx === nowIdx) el.classList.add("now");
+      });
+
+      const n = Number(sizeEl.value);
+      if (cursor < 0) {
+        formulaEl.innerHTML =
+          `아직 시작 전. 재생 또는 한 칸.` +
+          `<span class="why">mid = N // 2 = ${Math.floor(n / 2)}. 유효 칸 ${steps.length}개 / 전체 ${n * n}개.</span>`;
+        listEl.textContent = "indexes = []";
+      } else {
+        const s = steps[cursor];
+        formulaEl.innerHTML =
+          `idx = row * N + col = <b>${s.row}</b> * <b>${n}</b> + <b>${s.col}</b> = <b style="color:#f472b6">${s.idx}</b>` +
+          `<span class="why">${s.why}</span>`;
+        const ids = steps.slice(0, cursor + 1).map((x) => x.idx);
+        listEl.textContent = `indexes = [${ids.join(", ")}]`;
+      }
+      progressEl.textContent = `${cursor + 1} / ${steps.length}`;
+    }
+
+    function stepOnce() {
+      if (cursor >= steps.length - 1) {
+        stop();
+        return false;
+      }
+      cursor += 1;
+      paint();
+      return cursor < steps.length - 1;
+    }
+
+    function stop() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      playEl.textContent = "재생";
+    }
+
+    function play() {
+      if (timer) {
+        stop();
+        return;
+      }
+      if (cursor >= steps.length - 1) {
+        cursor = -1;
+        paint();
+      }
+      playEl.textContent = "일시정지";
+      const delay = Number(sizeEl.value) >= 13 ? 90 : 380;
+      timer = setInterval(() => {
+        if (!stepOnce()) stop();
+      }, delay);
+    }
+
+    playEl.addEventListener("click", play);
+    stepEl.addEventListener("click", () => {
+      stop();
+      stepOnce();
+    });
+    resetEl.addEventListener("click", rebuild);
+    shapeEl.addEventListener("change", rebuild);
+    sizeEl.addEventListener("change", rebuild);
+
+    rebuild();
+  </script>
+</body>
+</html>
