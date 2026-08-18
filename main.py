@@ -195,19 +195,18 @@ def resolve_filters_for_size(
 def print_optimization_table(
     sizes: list[int], filters_by_size: dict[int, dict[str, Matrix]]
 ) -> None:
-    """보너스 표. 열 순서 = 개선 단계 1→4.
+    """보너스 표. 열 순서 = 개선 단계 1→3.
 
     1. two_d    = 기존 2D mac()
     2. one_d    = flatten 후 전칸 1D mac_1d()
     3. indexmap = FilterType으로 인덱스만 뽑고, 1D 두 배열을 idx로 조회 mac_indexmap()
-    4. sparse   = (idx, filterValue) 튜플 mac_sparse()
     """
     print("\n#----------------------------------------")
-    print(f"# [보너스] MAC 4방식 비교 (평균/{OPTIMIZATION_REPEAT_COUNT}회, 전처리 제외)")
+    print(f"# [보너스] MAC 3방식 비교 (평균/{OPTIMIZATION_REPEAT_COUNT}회, 전처리 제외)")
     print("#----------------------------------------")
-    print("1. 기존 2D     2. 1D flatten     3. enum IndexMap     4. (idx, value) 튜플")
-    print("크기     1.2D(ms)   2.1D(ms)   3.Idx(ms)   4.Tuple(ms)")
-    print("-------------------------------------------------------")
+    print("1. 기존 2D     2. 1D flatten     3. enum IndexMap")
+    print("크기     1.2D(ms)   2.1D(ms)   3.Idx(ms)")
+    print("--------------------------------------------")
     for size in sizes:
         resolved: tuple[Matrix, Matrix] | None = resolve_filters_for_size(
             size, filters_by_size
@@ -228,13 +227,11 @@ def print_optimization_table(
         indexmap: float = (
             cross_bench.indexmap_ms + x_bench.indexmap_ms
         ) / 2.0  # 3 인덱스+1D 조회
-        sparse: float = (cross_bench.sparse_ms + x_bench.sparse_ms) / 2.0  # 4 튜플
         print(
             f"{size}×{size:<4} "
             f"{two_d:>9.4f}  "  # 1
             f"{one_d:>9.4f}  "  # 2
-            f"{indexmap:>9.4f}  "  # 3
-            f"{sparse:>10.4f}"  # 4
+            f"{indexmap:>9.4f}"  # 3
         )
 
 
@@ -385,6 +382,7 @@ def analyze_pattern(
             fail_reason="필터와 패턴 크기 불일치",
         )
 
+    # 검증 끝나면 계산 시작
     cross_score: float = mac(input_raw, cross_filter)
     x_score: float = mac(input_raw, x_filter)
     judgment: Label = judge_cross_x(cross_score, x_score)
@@ -426,31 +424,39 @@ def run_data_json_mode() -> None:
     print("\n#----------------------------------------")
     print("# [2] 패턴 분석 (라벨 정규화 적용)")
     print("#----------------------------------------")
+
+    # data.json의 패턴을 하나씩 꺼내서 판정한다.
+    # analyze_pattern() 안에서: 키→크기 추출, expected 정규화(+ → Cross), MAC, PASS/FAIL
     for case_id in patterns_raw:
         result: PatternResult = analyze_pattern(
             case_id, patterns_raw[case_id], filters_by_size
         )
         results.append(result)
         print(f"--- {case_id} ---")
-        # 점수를 구하지 못한 경우
+
+        # 스키마/크기 오류 등 — MAC까지 못 간 케이스. 점수 없이 FAIL만 찍고 다음으로.
         if result.fail_reason and result.cross_score is None:
             print(f"FAIL ({result.fail_reason})")
             continue
 
-        # 점수가 있으면 print하고 결과 출력
+        # 여기까지 왔으면 점수는 계산된 상태. 판정 vs expected 비교 결과를 출력.
         print(f"Cross 점수: {result.cross_score}")
         print(f"X 점수: {result.x_score}")
         status: str = "PASS" if result.passed else "FAIL"
         extra: str = ""
         if not result.passed and result.fail_reason:
-            extra = f" ({result.fail_reason})"
+            extra = f" ({result.fail_reason})"  # 동점(UNDECIDED) 또는 라벨 불일치 사유
         print(
             f"판정: {result.judgment.value} | expected: {result.expected.value} | {status}{extra}"
         )
 
-    performance_sizes: list[int] = [MATRIX_SIZE_3, *filters_by_size]
+    # [3] 크기별 MAC 평균 시간. 3x3은 생성기로 만들고, 나머지는 JSON 필터를 재사용.
+    # dict를 for 돌리면 key만 나온다 → 로드된 필터 크기들(5, 13, 25)을 뒤에 붙인다.
+    performance_sizes: list[int] = [MATRIX_SIZE_3]
+    performance_sizes.extend(filters_by_size.keys())
     print_performance_table(performance_sizes, filters_by_size)
 
+    # [4] 위에서 모아 둔 results로 통과/실패 개수만 집계한다. (다시 연산하지 않음)
     total: int = len(results)
     passed_count: int = sum(1 for result in results if result.passed)
     failed_count: int = total - passed_count
@@ -462,6 +468,7 @@ def run_data_json_mode() -> None:
     print(f"통과: {passed_count}개")
     print(f"실패: {failed_count}개")
 
+    # 실패만 골라서 케이스 id + 이유를 한 줄씩 나열.
     failed_cases: list[PatternResult] = [result for result in results if not result.passed]
     if failed_cases:
         print("\n실패 케이스:")
